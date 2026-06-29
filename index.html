@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/powerbi-client/2.23.1/powerbi.min.js"></script>
+<style>
+   * { margin: 0; padding: 0; box-sizing: border-box; }
+   body { background: #f0f2f5; font-family: 'Segoe UI', sans-serif; }
+   #reportContainer { width: 100vw; height: 100vh; }
+   iframe { border: none; }
+   #loading {
+     position: fixed; inset: 0;
+     display: flex; flex-direction: column;
+     align-items: center; justify-content: center;
+     background: #f0f2f5; z-index: 10; gap: 16px;
+   }
+   #loading p { color: #555; font-size: 16px; }
+   .spinner {
+     width: 48px; height: 48px;
+     border: 5px solid #ddd;
+     border-top-color: #0078d4;
+     border-radius: 50%;
+     animation: spin 0.8s linear infinite;
+   }
+   @keyframes spin { to { transform: rotate(360deg); } }
+   #error {
+     display: none; position: fixed; inset: 0;
+     align-items: center; justify-content: center;
+     flex-direction: column; gap: 12px;
+     background: #f0f2f5; color: #c00;
+     font-size: 16px; text-align: center; padding: 20px;
+   }
+</style>
+</head>
+<body>
+<div id="loading">
+<div class="spinner"></div>
+<p>Loading dashboard...</p>
+</div>
+<div id="error">
+<p id="errorMsg">❌ Failed to load.</p>
+</div>
+<div id="reportContainer"></div>
+<script>
+ const GROUP_ID  = "baf56118-c729-49bd-afd6-f473a0b7656c";
+ const REPORT_ID = "57c3e928-f0d4-4c8c-a441-9a4ac6c26a37";
+ async function embedReport() {
+   try {
+     const res = await fetch("/api/token");
+     const data = await res.json();
+     if (!data.token) throw new Error(data.error || "No token");
+     const embedUrl = `https://app.powerbi.com/reportEmbed?reportId=${REPORT_ID}&groupId=${GROUP_ID}`;
+     const config = {
+       type: "report",
+       id: REPORT_ID,
+       embedUrl,
+       accessToken: data.token,
+       tokenType: window["powerbi-client"].models.TokenType.Embed,
+       settings: {
+         navContentPaneEnabled: false,
+         filterPaneEnabled: false
+       }
+     };
+     const container = document.getElementById("reportContainer");
+     const report = window.powerbi.embed(container, config);
+     report.on("loaded", () => {
+       document.getElementById("loading").style.display = "none";
+     });
+     report.on("error", (e) => {
+       showError(JSON.stringify(e.detail));
+     });
+   } catch (err) {
+     showError(err.message);
+   }
+ }
+ function showError(msg) {
+   document.getElementById("loading").style.display = "none";
+   const e = document.getElementById("error");
+   e.style.display = "flex";
+   document.getElementById("errorMsg").textContent = "❌ " + msg;
+ }
+ embedReport();
+</script>
+</body>
+</html>
