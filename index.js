@@ -3,6 +3,7 @@ import fetch from "node-fetch";
 import cors from "cors";
 
 const app = express();
+
 app.use(cors());
 
 const CONFIG = {
@@ -11,11 +12,13 @@ const CONFIG = {
   tenantId: process.env.TENANT_ID,
   workspaceId: process.env.WORKSPACE_ID,
   reportId: process.env.REPORT_ID,
+
+  // Dataset ID اللي ظهر في الـ Error
+  datasetId: "58186a37-ba4b-47fd-b7d3-e82c7d6118d3"
 };
 
-// ✅ get access token
 async function getAccessToken() {
-  const res = await fetch(
+  const response = await fetch(
     `https://login.microsoftonline.com/${CONFIG.tenantId}/oauth2/v2.0/token`,
     {
       method: "POST",
@@ -23,27 +26,27 @@ async function getAccessToken() {
         grant_type: "client_credentials",
         client_id: CONFIG.clientId,
         client_secret: CONFIG.clientSecret,
-        scope: "https://analysis.windows.net/powerbi/api/.default",
-      }),
+        scope: "https://analysis.windows.net/powerbi/api/.default"
+      })
     }
   );
 
-  const data = await res.json();
+  const data = await response.json();
 
-  if (!res.ok) {
+  if (!response.ok) {
     throw new Error(JSON.stringify(data));
   }
 
   return data.access_token;
 }
 
-// ✅ MAIN ENDPOINT (فيه الحل)
+app.get("/", (req, res) => {
+  res.send("✅ API Running");
+});
+
 app.get("/embed", async (req, res) => {
   try {
     const accessToken = await getAccessToken();
-
-    // ✅ dataset ID (من error بتاعك)
-    const datasetId = "58186a37-ba4b-47fd-b7d3-e82c7d6118d3";
 
     const response = await fetch(
       `https://api.powerbi.com/v1.0/myorg/groups/${CONFIG.workspaceId}/reports/${CONFIG.reportId}/GenerateToken`,
@@ -51,48 +54,47 @@ app.get("/embed", async (req, res) => {
         method: "POST",
         headers: {
           Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({
           accessLevel: "view",
 
-          // ✅ الحل هنا 👇
           identities: [
             {
-              username: "user@demo.com",
-              datasets: [datasetId]
+              username: "powerbi_user@efinance.com.eg",
+              datasets: [CONFIG.datasetId]
             }
           ]
-        }),
+        })
       }
     );
 
     const data = await response.json();
 
+    console.log("Power BI Response:");
+    console.log(JSON.stringify(data, null, 2));
+
     if (!response.ok) {
-      throw new Error(JSON.stringify(data));
+      return res.status(500).json(data);
     }
 
-    res.json({
-      embedToken: data.token,
-      embedUrl: `https://app.powerbi.com/reportEmbed?reportId=${CONFIG.reportId}&groupId=${CONFIG.workspaceId}`,
+    return res.json({
       reportId: CONFIG.reportId,
+      embedUrl: `https://app.powerbi.com/reportEmbed?reportId=${CONFIG.reportId}&groupId=${CONFIG.workspaceId}`,
+      embedToken: data.token
     });
 
-  } catch (e) {
-    console.error(e);
+  } catch (error) {
+    console.error(error);
 
-    res.status(500).json({
-      error: e.message
+    return res.status(500).json({
+      error: error.message
     });
   }
 });
 
-// ✅ test
-app.get("/", (req, res) => {
-  res.send("✅ API Running");
-});
+const PORT = process.env.PORT || 10000;
 
-app.listen(10000, () => {
+app.listen(PORT, () => {
   console.log("✅ Server Running");
 });
