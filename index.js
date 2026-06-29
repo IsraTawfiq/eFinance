@@ -13,7 +13,7 @@ const CONFIG = {
   reportId: process.env.REPORT_ID,
 };
 
-// ✅ Get Access Token
+// ✅ get access token
 async function getAccessToken() {
   const res = await fetch(
     `https://login.microsoftonline.com/${CONFIG.tenantId}/oauth2/v2.0/token`,
@@ -29,10 +29,15 @@ async function getAccessToken() {
   );
 
   const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(JSON.stringify(data)); // 👈 يطلع الخطأ الحقيقي
+  }
+
   return data.access_token;
 }
 
-// ✅ Generate Embed Token
+// ✅ endpoint
 app.get("/embed", async (req, res) => {
   try {
     const accessToken = await getAccessToken();
@@ -53,19 +58,31 @@ app.get("/embed", async (req, res) => {
 
     const data = await response.json();
 
+    if (!response.ok) {
+      throw new Error(JSON.stringify(data)); // 👈 يطلع الخطأ
+    }
+
     res.json({
       embedToken: data.token,
       embedUrl: `https://app.powerbi.com/reportEmbed?reportId=${CONFIG.reportId}&groupId=${CONFIG.workspaceId}`,
       reportId: CONFIG.reportId,
     });
 
-  } catch (error) {
-    console.error(error);
-    res.status(500).send("Error generating token");
+  } catch (e) {
+    console.error(e);
+
+    res.status(500).json({
+      error: e.message // 👈 ده مهم عشان نعرف المشكلة
+    });
   }
 });
 
-// ✅ Run server
+// ✅ root test
+app.get("/", (req, res) => {
+  res.send("✅ API Running");
+});
+
+// ✅ run server
 app.listen(10000, () => {
   console.log("✅ Server running on port 10000");
 });
