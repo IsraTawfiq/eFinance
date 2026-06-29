@@ -12,8 +12,6 @@ const CONFIG = {
   tenantId: process.env.TENANT_ID,
   workspaceId: process.env.WORKSPACE_ID,
   reportId: process.env.REPORT_ID,
-
-  // Dataset ID اللي ظهر في الـ Error
   datasetId: "58186a37-ba4b-47fd-b7d3-e82c7d6118d3"
 };
 
@@ -58,7 +56,6 @@ app.get("/embed", async (req, res) => {
         },
         body: JSON.stringify({
           accessLevel: "view",
-
           identities: [
             {
               username: "powerbi_user@efinance.com.eg",
@@ -71,7 +68,6 @@ app.get("/embed", async (req, res) => {
 
     const data = await response.json();
 
-    console.log("Power BI Response:");
     console.log(JSON.stringify(data, null, 2));
 
     if (!response.ok) {
@@ -85,8 +81,6 @@ app.get("/embed", async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error);
-
     return res.status(500).json({
       error: error.message
     });
