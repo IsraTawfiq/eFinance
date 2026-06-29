@@ -31,16 +31,19 @@ async function getAccessToken() {
   const data = await res.json();
 
   if (!res.ok) {
-    throw new Error(JSON.stringify(data)); // 👈 يطلع الخطأ الحقيقي
+    throw new Error(JSON.stringify(data));
   }
 
   return data.access_token;
 }
 
-// ✅ endpoint
+// ✅ MAIN ENDPOINT (فيه الحل)
 app.get("/embed", async (req, res) => {
   try {
     const accessToken = await getAccessToken();
+
+    // ✅ dataset ID (من error بتاعك)
+    const datasetId = "58186a37-ba4b-47fd-b7d3-e82c7d6118d3";
 
     const response = await fetch(
       `https://api.powerbi.com/v1.0/myorg/groups/${CONFIG.workspaceId}/reports/${CONFIG.reportId}/GenerateToken`,
@@ -52,6 +55,14 @@ app.get("/embed", async (req, res) => {
         },
         body: JSON.stringify({
           accessLevel: "view",
+
+          // ✅ الحل هنا 👇
+          identities: [
+            {
+              username: "user@demo.com",
+              datasets: [datasetId]
+            }
+          ]
         }),
       }
     );
@@ -59,7 +70,7 @@ app.get("/embed", async (req, res) => {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(JSON.stringify(data)); // 👈 يطلع الخطأ
+      throw new Error(JSON.stringify(data));
     }
 
     res.json({
@@ -72,17 +83,16 @@ app.get("/embed", async (req, res) => {
     console.error(e);
 
     res.status(500).json({
-      error: e.message // 👈 ده مهم عشان نعرف المشكلة
+      error: e.message
     });
   }
 });
 
-// ✅ root test
+// ✅ test
 app.get("/", (req, res) => {
   res.send("✅ API Running");
 });
 
-// ✅ run server
 app.listen(10000, () => {
-  console.log("✅ Server running on port 10000");
+  console.log("✅ Server Running");
 });
