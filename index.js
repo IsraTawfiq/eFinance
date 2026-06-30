@@ -1,94 +1,300 @@
-import express from "express";
-import fetch from "node-fetch";
-import cors from "cors";
+const express = require("express");
+
+const cors = require("cors");
 
 const app = express();
 
 app.use(cors());
 
-const CONFIG = {
-  clientId: process.env.CLIENT_ID,
-  clientSecret: process.env.CLIENT_SECRET,
-  tenantId: process.env.TENANT_ID,
-  workspaceId: process.env.WORKSPACE_ID,
-  reportId: process.env.REPORT_ID,
-  datasetId: "58186a37-ba4b-47fd-b7d3-e82c7d6118d3"
-};
+app.use(express.json());
+
+// ============ CONFIG ============
+
+const TENANT_ID   = "28a4cf11-f383-4845-bf32-a6cdadf71cd2";
+
+const CLIENT_ID   = "8915e96a-7e1a-42c9-85f4-b4b97234acf7";
+
+const GROUP_ID    = "baf56118-c729-49bd-afd6-f473a0b7656c";
+
+const REPORT_ID   = "57c3e928-f0d4-4c8c-a441-9a4ac6c26a37";
+
+const DATASET_ID  = "58186a37-ba4b-47fd-b7d3-e82c7d6118d3";
+
+// Service Principal Object ID (NOT the Application ID!)
+
+const SP_OBJECT_ID = "9a13c5c0-b083-4668-ad18-35432d480d45";
+
+// AD user known to SSAS (used as effective identity)
+
+const EFFECTIVE_USERNAME = "powerbi_user@efinance.com.eg";
+
+// Secret comes from Render Environment Variable
+
+const CLIENT_SECRET = process.env.PBI_SECRET;
+
+// ================================
+
+// Helper: get AAD access token
 
 async function getAccessToken() {
-  const response = await fetch(
-    `https://login.microsoftonline.com/${CONFIG.tenantId}/oauth2/v2.0/token`,
+
+  const res = await fetch(
+
+    `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`,
+
     {
+
       method: "POST",
+
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+
       body: new URLSearchParams({
-        grant_type: "client_credentials",
-        client_id: CONFIG.clientId,
-        client_secret: CONFIG.clientSecret,
-        scope: "https://analysis.windows.net/powerbi/api/.default"
+
+        grant_type:    "client_credentials",
+
+        client_id:     CLIENT_ID,
+
+        client_secret: CLIENT_SECRET,
+
+        scope:         "https://analysis.windows.net/powerbi/api/.default"
+
       })
+
     }
+
   );
 
-  const data = await response.json();
+  const data = await res.json();
 
-  if (!response.ok) {
-    throw new Error(JSON.stringify(data));
+  if (!data.access_token) {
+
+    throw new Error(data.error_description || "Failed to get access token");
+
   }
 
   return data.access_token;
+
 }
 
-app.get("/", (req, res) => {
-  res.send("✅ API Running");
-});
+// ---------- ENDPOINT 1: Get Gateway + Datasource IDs ----------
 
-app.get("/embed", async (req, res) => {
+app.get("/get-ids", async (req, res) => {
+
   try {
-    const accessToken = await getAccessToken();
 
-    const response = await fetch(
-      `https://api.powerbi.com/v1.0/myorg/groups/${CONFIG.workspaceId}/reports/${CONFIG.reportId}/GenerateToken`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          accessLevel: "view",
-          identities: [
-            {
-              username: "powerbi_user@efinance.com.eg",
-              datasets: [CONFIG.datasetId]
-            }
-          ]
-        })
-      }
-    );
+    const token = await getAccessToken();
 
-    const data = await response.json();
+    const gwRes = await fetch("https://api.powerbi.com/v1.0/myorg/gateways", {
 
-    console.log(JSON.stringify(data, null, 2));
+      headers: { Authorization: `Bearer ${token}` }
 
-    if (!response.ok) {
-      return res.status(500).json(data);
+    });
+
+    const gateways = await gwRes.json();
+
+    const result = [];
+
+    for (const gw of (gateways.value || [])) {
+
+      const dsRes = await fetch(
+
+        `https://api.powerbi.com/v1.0/myorg/gateways/${gw.id}/datasources`,
+
+        { headers: { Authorization: `Bearer ${token}` } }
+
+      );
+
+      const ds = await dsRes.json();
+
+      result.push({
+
+        gatewayId:   gw.id,
+
+        gatewayName: gw.name,
+
+        datasources: (ds.value || []).map(d => ({
+
+          datasourceId:   d.id,
+
+          datasourceName: d.datasourceName,
+
+          datasourceType: d.datasourceType
+
+        }))
+
+      });
+
     }
 
-    return res.json({
-      reportId: CONFIG.reportId,
-      embedUrl: `https://app.powerbi.com/reportEmbed?reportId=${CONFIG.reportId}&groupId=${CONFIG.workspaceId}`,
-      embedToken: data.token
-    });
+    res.json(result);
 
-  } catch (error) {
-    return res.status(500).json({
-      error: error.message
-    });
+  } catch (e) {
+
+    res.status(500).json({ error: e.message });
+
   }
+
 });
 
-const PORT = process.env.PORT || 10000;
+// ---------- ENDPOINT 2: Grant ReadOverrideEffectiveIdentity ----------
 
-app.listen(PORT, () => {
-  console.log("✅ Server Running");
+app.get("/grant-override", async (req, res) => {
+
+  try {
+
+    const { gatewayId, datasourceId } = req.query;
+
+    if (!gatewayId || !datasourceId) {
+
+      return res.status(400).json({
+
+        error: "Missing gatewayId or datasourceId in query. Run /get-ids first."
+
+      });
+
+    }
+
+    const token = await getAccessToken();
+
+    const grantRes = await fetch(
+
+      `https://api.powerbi.com/v1.0/myorg/gateways/${gatewayId}/datasources/${datasourceId}/users`,
+
+      {
+
+        method: "POST",
+
+        headers: {
+
+          Authorization: `Bearer ${token}`,
+
+          "Content-Type": "application/json"
+
+        },
+
+        body: JSON.stringify({
+
+          identifier:            SP_OBJECT_ID,
+
+          datasourceAccessRight: "ReadOverrideEffectiveIdentity",
+
+          principalType:         "App"
+
+        })
+
+      }
+
+    );
+
+    if (grantRes.status === 200 || grantRes.status === 201) {
+
+      return res.json({ success: true, message: "ReadOverrideEffectiveIdentity granted!" });
+
+    }
+
+    const errText = await grantRes.text();
+
+    res.status(grantRes.status).json({
+
+      success: false,
+
+      status: grantRes.status,
+
+      detail: errText
+
+    });
+
+  } catch (e) {
+
+    res.status(500).json({ error: e.message });
+
+  }
+
 });
+
+// ---------- ENDPOINT 3: Generate Embed Token (the main one) ----------
+
+app.get("/embed", async (req, res) => {
+
+  try {
+
+    const token = await getAccessToken();
+
+    const embedRes = await fetch(
+
+      `https://api.powerbi.com/v1.0/myorg/groups/${GROUP_ID}/reports/${REPORT_ID}/GenerateToken`,
+
+      {
+
+        method: "POST",
+
+        headers: {
+
+          Authorization: `Bearer ${token}`,
+
+          "Content-Type": "application/json"
+
+        },
+
+        body: JSON.stringify({
+
+          accessLevel: "View",
+
+          identities: [
+
+            {
+
+              username: EFFECTIVE_USERNAME,
+
+              datasets: [DATASET_ID]
+
+            }
+
+          ]
+
+        })
+
+      }
+
+    );
+
+    const embedData = await embedRes.json();
+
+    if (!embedData.token) {
+
+      return res.status(500).json({
+
+        error: embedData.error?.message || embedData.message || "Failed to generate embed token",
+
+        raw: embedData
+
+      });
+
+    }
+
+    res.json({
+
+      token:     embedData.token,
+
+      embedUrl:  `https://app.powerbi.com/reportEmbed?reportId=${REPORT_ID}&groupId=${GROUP_ID}`,
+
+      reportId:  REPORT_ID
+
+    });
+
+  } catch (e) {
+
+    res.status(500).json({ error: e.message });
+
+  }
+
+});
+
+// Health check
+
+app.get("/", (req, res) => res.send("eFinance PBI backend is running."));
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+ 
