@@ -8,33 +8,31 @@ app.use(cors());
 
 app.use(express.json());
 
-// ============ CONFIG ============
+// ============ CONFIG (reads from Render Environment Variables) ============
 
-const TENANT_ID   = "28a4cf11-f383-4845-bf32-a6cdadf71cd2";
+const TENANT_ID     = process.env.TENANT_ID;
 
-const CLIENT_ID   = "8915e96a-7e1a-42c9-85f4-b4b97234acf7";
+const CLIENT_ID     = process.env.CLIENT_ID;
 
-const GROUP_ID    = "baf56118-c729-49bd-afd6-f473a0b7656c";
+const CLIENT_SECRET = process.env.CLIENT_SECRET;
 
-const REPORT_ID   = "57c3e928-f0d4-4c8c-a441-9a4ac6c26a37";
+const GROUP_ID      = process.env.WORKSPACE_ID;
 
-const DATASET_ID  = "58186a37-ba4b-47fd-b7d3-e82c7d6118d3";
+const REPORT_ID     = process.env.REPORT_ID;
+
+const PBI_USERNAME  = process.env.PBI_USERNAME;   // effective identity username
+
+// Dataset ID (not in env, so hardcoded here)
+
+const DATASET_ID    = "58186a37-ba4b-47fd-b7d3-e82c7d6118d3";
 
 // Service Principal Object ID (NOT the Application ID!)
 
-const SP_OBJECT_ID = "9a13c5c0-b083-4668-ad18-35432d480d45";
+const SP_OBJECT_ID  = "9a13c5c0-b083-4668-ad18-35432d480d45";
 
-// AD user known to SSAS (used as effective identity)
+// ==========================================================================
 
-const EFFECTIVE_USERNAME = "powerbi_user@efinance.com.eg";
-
-// Secret comes from Render Environment Variable
-
-const CLIENT_SECRET = process.env.PBI_SECRET;
-
-// ================================
-
-// Helper: get AAD access token
+// Helper: get AAD access token (Service Principal / client credentials)
 
 async function getAccessToken() {
 
@@ -244,7 +242,7 @@ app.get("/embed", async (req, res) => {
 
             {
 
-              username: EFFECTIVE_USERNAME,
+              username: PBI_USERNAME,
 
               datasets: [DATASET_ID]
 
